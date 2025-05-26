@@ -31,6 +31,10 @@ for ticker in TICKERS:
         results.append(res)
 
 df = pd.DataFrame(results)
-df = df.sort_values(by="Trend (5 Tage %)", ascending=False)
 
+if not df.empty and "Trend (5 Tage %)" in df.columns:
+    df = df.sort_values(by="Trend (5 Tage %)", ascending=False)
+    st.dataframe(df)
+else:
+    st.warning("Keine verwertbaren Daten verfügbar.")
 st.dataframe(df)
