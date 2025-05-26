@@ -63,26 +63,35 @@ for t in tickers:
 if daten:
     df = pd.DataFrame(daten)
 
-    # KI-Modell trainieren
-    features = ["Trend 5d (%)", "Trend 10d (%)", "Volumen"]
-    X = df[features]
-    y = df["Ziel (Demo)"]
+    # Sicherstellen, dass alle Werte numerisch sind
+    df["Trend 5d (%)"] = pd.to_numeric(df["Trend 5d (%)"], errors="coerce")
+    df["Trend 10d (%)"] = pd.to_numeric(df["Trend 10d (%)"], errors="coerce")
+    df["Volumen"] = pd.to_numeric(df["Volumen"], errors="coerce")
 
-    model = RandomForestClassifier(n_estimators=100, random_state=42)
-    model.fit(X, y)
-    predictions = model.predict(X)
+    # Entferne fehlerhafte Zeilen
+    df = df.dropna(subset=["Trend 5d (%)", "Trend 10d (%)", "Volumen", "Ziel (Demo)"])
+
+    if df.empty:
+        st.warning("Keine gültigen Daten für Analyse gefunden.")
+    else:
+        # KI-Modell trainieren
+        features = ["Trend 5d (%)", "Trend 10d (%)", "Volumen"]
+        X = df[features]
+        y = df["Ziel (Demo)"]
+
+        model = RandomForestClassifier(n_estimators=100, random_state=42)
+        model.fit(X, y)
+        predictions = model.predict(X)
 
         df["KI-Vorhersage"] = ["📈 Steigt" if p == 1 else "📉 Fällt" for p in predictions]
-    df = df.drop(columns=["Ziel (Demo)"])
+        df = df.drop(columns=["Ziel (Demo)"])
 
-    # Zeilen mit fehlenden oder fehlerhaften Werten ausschließen
-    df_clean = df[pd.to_numeric(df["Trend 5d (%)"], errors="coerce").notnull()]
-    
-    if not df_clean.empty:
-        df_clean = df_clean.sort_values(by="Trend 5d (%)", ascending=False)
+        # Sortieren nur, wenn Spalte vorhanden und gültig
+        if "Trend 5d (%)" in df.columns and df["Trend 5d (%)"].notnull().all():
+            df = df.sort_values(by="Trend 5d (%)", ascending=False)
+
         st.success("Analyse abgeschlossen – Ergebnisse unten:")
-        st.dataframe(df_clean.set_index("Ticker"))
-    else:
-        st.warning("Analyse abgeschlossen – aber keine brauchbaren Werte zum Sortieren gefunden.")
+        st.dataframe(df.set_index("Ticker"))
+
 else:
     st.warning("Keine gültigen Aktien gefunden oder fehlerhafte Ticker.")
