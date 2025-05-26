@@ -1,40 +1,82 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
+import numpy as np
+from sklearn.ensemble import RandomForestClassifier
 
-# Beispielhafte Aktienliste
-TICKERS = ["AAPL", "MSFT", "GOOGL", "NVDA", "AMZN", "TSLA", "META"]
+# --- Tickerlisten ---
+DAX40 = [
+    "ADS.DE", "ALV.DE", "BAS.DE", "BAYN.DE", "BMW.DE",
+    "DAI.DE", "DHER.DE", "DPW.DE", "DTE.DE", "FME.DE"
+]
+NASDAQ = [
+    "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN",
+    "TSLA", "META", "ADBE", "INTC", "PEP"
+]
 
+# --- Titel ---
+st.title("📈 Aktien-Empfehlung & KI-Prognose")
+st.markdown("Wähle ein Aktienpaket oder gib eigene Ticker ein. Die App zeigt Trenddaten und KI-Prognosen für 5–10 Tage.")
+
+# --- Auswahlfeld ---
+auswahl = st.selectbox("Quellliste wählen:", ["DAX40", "NASDAQ", "Manuelle Eingabe"])
+
+if auswahl == "DAX40":
+    tickers = DAX40
+elif auswahl == "NASDAQ":
+    tickers = NASDAQ
+else:
+    user_input = st.text_input("Gib eigene Tickersymbole ein (z. B. AAPL,MSFT,NVDA):")
+    tickers = [x.strip().upper() for x in user_input.split(",") if x.strip()]
+
+# --- Ticker analysieren ---
 def analyze_ticker(ticker):
-    data = yf.download(ticker, period="15d", interval="1d", progress=False)
-    if data.empty or len(data) < 10:
+    try:
+        df = yf.download(ticker, period="30d", interval="1d", progress=False)
+        if df.empty or len(df) < 12:
+            return None
+
+        last_close = df["Close"].iloc[-1]
+        trend_5d = (last_close - df["Close"].iloc[-6]) / df["Close"].iloc[-6]
+        trend_10d = (last_close - df["Close"].iloc[-11]) / df["Close"].iloc[-11]
+        avg_volume = df["Volume"].iloc[-5:].mean()
+
+        return {
+            "Ticker": ticker,
+            "Letzter Kurs": round(last_close, 2),
+            "Trend 5d (%)": round(trend_5d * 100, 2),
+            "Trend 10d (%)": round(trend_10d * 100, 2),
+            "Volumen": int(avg_volume),
+            "Ziel (Demo)": int(trend_5d > 0)  # Dummy-Ziel für KI-Training
+        }
+    except:
         return None
 
-    last_close = data["Close"].iloc[-1]
-    prev_5_avg = data["Close"].iloc[-6:-1].mean()
-    trend_pct = ((last_close - prev_5_avg) / prev_5_avg) * 100
-
-    return {
-        "Aktie": ticker,
-        "Letzter Kurs": round(last_close, 2),
-        "Durchschnitt (vor 5 Tagen)": round(prev_5_avg, 2),
-        "Trend (5 Tage %)": round(trend_pct, 2)
-    }
-
-st.title("📈 Aktien mit Aufwärtspotenzial (5–10 Tage)")
-st.write("Diese App analysiert Aktien mit guter Kurzfrist-Tendenz.")
-
-results = []
-for ticker in TICKERS:
-    res = analyze_ticker(ticker)
+# --- Daten sammeln ---
+daten = []
+for t in tickers:
+    res = analyze_ticker(t)
     if res:
-        results.append(res)
+        daten.append(res)
 
-df = pd.DataFrame(results)
+# --- Anzeige & KI-Modell ---
+if daten:
+    df = pd.DataFrame(daten)
 
-if not df.empty and "Trend (5 Tage %)" in df.columns:
-    df = df.sort_values(by="Trend (5 Tage %)", ascending=False)
-    st.dataframe(df)
+    # KI-Modell trainieren
+    features = ["Trend 5d (%)", "Trend 10d (%)", "Volumen"]
+    X = df[features]
+    y = df["Ziel (Demo)"]
+
+    model = RandomForestClassifier(n_estimators=100, random_state=42)
+    model.fit(X, y)
+    predictions = model.predict(X)
+
+    df["KI-Vorhersage"] = ["📈 Steigt" if p == 1 else "📉 Fällt" for p in predictions]
+    df = df.drop(columns=["Ziel (Demo)"])
+    df = df.sort_values(by="Trend 5d (%)", ascending=False)
+
+    st.success("Analyse abgeschlossen – Ergebnisse unten:")
+    st.dataframe(df.set_index("Ticker"))
 else:
-    st.warning("Keine verwertbaren Daten verfügbar.")
-st.dataframe(df)
+    st.warning("Keine gültigen Aktien gefunden oder fehlerhafte Ticker.")
