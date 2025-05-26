@@ -63,32 +63,31 @@ for t in tickers:
 if daten:
     df = pd.DataFrame(daten)
 
-    # Sicherstellen, dass alle Werte numerisch sind
-    df["Trend 5d (%)"] = pd.to_numeric(df["Trend 5d (%)"], errors="coerce")
-    df["Trend 10d (%)"] = pd.to_numeric(df["Trend 10d (%)"], errors="coerce")
-    df["Volumen"] = pd.to_numeric(df["Volumen"], errors="coerce")
+    # Nur die relevanten Spalten extrahieren & in float umwandeln
+    for col in ["Trend 5d (%)", "Trend 10d (%)", "Volumen", "Ziel (Demo)"]:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    # Entferne fehlerhafte Zeilen
+    # Ungültige Zeilen entfernen
     df = df.dropna(subset=["Trend 5d (%)", "Trend 10d (%)", "Volumen", "Ziel (Demo)"])
 
     if df.empty:
-        st.warning("Keine gültigen Daten für Analyse gefunden.")
+        st.warning("Keine gültigen Daten für die Analyse gefunden.")
     else:
-        # KI-Modell trainieren
-        features = ["Trend 5d (%)", "Trend 10d (%)", "Volumen"]
-        X = df[features]
-        y = df["Ziel (Demo)"]
+        # KI trainieren
+        X = df[["Trend 5d (%)", "Trend 10d (%)", "Volumen"]]
+        y = df["Ziel (Demo)"].astype(int)
 
         model = RandomForestClassifier(n_estimators=100, random_state=42)
         model.fit(X, y)
-        predictions = model.predict(X)
+        df["KI-Vorhersage"] = model.predict(X)
+        df["KI-Vorhersage"] = df["KI-Vorhersage"].map({1: "📈 Steigt", 0: "📉 Fällt"})
 
-        df["KI-Vorhersage"] = ["📈 Steigt" if p == 1 else "📉 Fällt" for p in predictions]
-        df = df.drop(columns=["Ziel (Demo)"])
+        # Sortieren mit vollständig neuer Spalte, explizit float
+        sort_col = pd.to_numeric(df["Trend 5d (%)"], errors="coerce")
+        df["Trend 5d (%) (float)"] = sort_col.values  # gleicher Index
 
-        # Sortieren nur, wenn Spalte vorhanden und gültig
-        if "Trend 5d (%)" in df.columns and df["Trend 5d (%)"].notnull().all():
-            df = df.sort_values(by="Trend 5d (%)", ascending=False)
+        df = df.sort_values(by="Trend 5d (%) (float)", ascending=False)
+        df = df.drop(columns=["Ziel (Demo)", "Trend 5d (%) (float)"])
 
         st.success("Analyse abgeschlossen – Ergebnisse unten:")
         st.dataframe(df.set_index("Ticker"))
